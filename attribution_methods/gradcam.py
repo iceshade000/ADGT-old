@@ -6,8 +6,9 @@ from torch.autograd import Function
 from torchvision import models
 from matplotlib.pyplot import imsave
 
+
 class FeatureExtractor():
-    """ Class for extracting activations and 
+    """ Class for extracting activations and
     registering gradients from targetted intermediate layers """
 
     def __init__(self, model, target_layers):
@@ -50,10 +51,10 @@ class ModelOutputs():
                 target_activations, x = self.feature_extractor(x)
             elif "pool" in name.lower():
                 x = module(x)
-                x = x.view(x.size(0),-1)
+                x = x.view(x.size(0), -1)
             else:
                 x = module(x)
-        
+
         return target_activations, x
 
 
@@ -73,17 +74,17 @@ def preprocess_image(img):
     return input
 
 
-def show_cam_on_image(img, mask,file_name="cam.jpg"):
+def show_cam_on_image(img, mask, file_name="cam.jpg"):
     if img.ndim == 4:
-        img=img.transpose(0, 2, 3, 1)
-        img=img.reshape(img.shape[1],img.shape[2],img.shape[3])
+        img = img.transpose(0, 2, 3, 1)
+        img = img.reshape(img.shape[1], img.shape[2], img.shape[3])
     heatmap = cv2.applyColorMap(np.uint8(255 * mask), cv2.COLORMAP_JET)
     heatmap = np.float32(heatmap) / 255
-    cam = heatmap*0.5 + np.float32(img)*0.5
+    cam = heatmap * 0.5 + np.float32(img) * 0.5
     cam = cam / np.max(cam)
     print(cam.shape)
-    #cv2.imwrite(file_name, np.uint8(255 * cam))
-    imsave(file_name,cam)
+    # cv2.imwrite(file_name, np.uint8(255 * cam))
+    imsave(file_name, cam)
 
 
 class GradCam:
@@ -132,11 +133,11 @@ class GradCam:
         for i, w in enumerate(weights):
             cam += w * target[i, :, :]
 
-        #cam=cam-cam.mean()
+        # cam=cam-cam.mean()
         cam = np.maximum(cam, 0)
         cam = cv2.resize(cam, input.shape[2:])
-        #cam = cam - np.min(cam)
-        cam = cam / (np.max(cam)+1e-8)
+        # cam = cam - np.min(cam)
+        cam = cam / (np.max(cam) + 1e-8)
         return cam
 
 
@@ -176,7 +177,7 @@ class GuidedBackpropReLUModel:
                 recursive_relu_apply(module)
                 if module.__class__.__name__ == 'ReLU':
                     module_top._modules[idx] = GuidedBackpropReLU.apply
-                
+
         # replace ReLU with GuidedBackpropReLU
         recursive_relu_apply(self.model)
 
@@ -214,7 +215,7 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--use-cuda', action='store_true', default=False,
                         help='Use NVIDIA GPU acceleration')
-    parser.add_argument('--image-path', type=str, default='./examples/both.png',
+    parser.add_argument('--image-path', type=str, default='./examples/both1.png',
                         help='Input image path')
     args = parser.parse_args()
     args.use_cuda = args.use_cuda and torch.cuda.is_available()
@@ -225,6 +226,7 @@ def get_args():
 
     return args
 
+
 def deprocess_image(img):
     """ see https://github.com/jacobgil/keras-grad-cam/blob/master/grad-cam.py#L65 """
     img = img - np.mean(img)
@@ -232,7 +234,7 @@ def deprocess_image(img):
     img = img * 0.1
     img = img + 0.5
     img = np.clip(img, 0, 1)
-    return np.uint8(img*255)
+    return np.uint8(img * 255)
 
 
 if __name__ == '__main__':
@@ -268,7 +270,7 @@ if __name__ == '__main__':
     gb = gb_model(input, index=target_index)
     gb = gb.transpose((1, 2, 0))
     cam_mask = cv2.merge([mask, mask, mask])
-    cam_gb = deprocess_image(cam_mask*gb)
+    cam_gb = deprocess_image(cam_mask * gb)
     gb = deprocess_image(gb)
 
     cv2.imwrite('gb.jpg', gb)
