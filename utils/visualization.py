@@ -2,12 +2,14 @@ import os
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import imsave
 import torch.nn.functional as F
-from torchvision import  transforms
-plt.switch_backend('agg')
+from torchvision import transforms
 import torch
 import torch.nn as nn
 
-def show_cam(raw_img,mask,filename):
+plt.switch_backend('agg')
+
+
+def show_cam(raw_img, mask, filename):
     raw_img = raw_img.transpose(0, 2, 3, 1)
     raw_img = raw_img.reshape(raw_img.shape[1], raw_img.shape[2], raw_img.shape[3])
     plt.imshow(raw_img)
@@ -15,23 +17,24 @@ def show_cam(raw_img,mask,filename):
     plt.savefig(filename)
     plt.close()
 
+
 def save_images(X, save_path):
     # [0, 1] -> [0,255]
 
-    minn=np.min(X.reshape([X.shape[0],-1]),axis=1)
-    maxx=np.max(X.reshape([X.shape[0],-1]),axis=1)
+    minn = np.min(X.reshape([X.shape[0], -1]), axis=1)
+    maxx = np.max(X.reshape([X.shape[0], -1]), axis=1)
     if X.ndim == 4:
-        minn=minn.reshape([X.shape[0],1,1,1])
-        maxx=maxx.reshape([X.shape[0],1,1,1])
-    elif X.ndim==3:
+        minn = minn.reshape([X.shape[0], 1, 1, 1])
+        maxx = maxx.reshape([X.shape[0], 1, 1, 1])
+    elif X.ndim == 3:
         minn = minn.reshape([X.shape[0], 1, 1])
         maxx = maxx.reshape([X.shape[0], 1, 1])
-    else :
+    else:
         minn = minn.reshape([X.shape[0], 1])
         maxx = maxx.reshape([X.shape[0], 1])
-    X=(X-minn)/(maxx-minn)
+    X = (X - minn) / (maxx - minn)
 
-    #if isinstance(X.flatten()[0], np.floating):
+    # if isinstance(X.flatten()[0], np.floating):
     #    #X = (255 * X).astype('uint8')
     #    X=np.uint8(255 * X)
 

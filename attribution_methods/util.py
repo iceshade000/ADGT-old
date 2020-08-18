@@ -3,6 +3,7 @@ import torch.nn.functional as F
 import cv2
 import numpy as np
 
+
 def calculate_outputs_and_gradients(inputs, model, target_label_idx, cuda=False):
     # do the pre-processing
     predict_idx = None
@@ -26,6 +27,7 @@ def calculate_outputs_and_gradients(inputs, model, target_label_idx, cuda=False)
     gradients = np.array(gradients)
     return gradients, target_label_idx
 
+
 def pre_processing(obs, cuda):
     mean = np.array([0.485, 0.456, 0.406]).reshape([1, 1, 3])
     std = np.array([0.229, 0.224, 0.225]).reshape([1, 1, 3])
@@ -41,12 +43,13 @@ def pre_processing(obs, cuda):
     obs_tensor = torch.tensor(obs, dtype=torch.float32, device=torch_device, requires_grad=True)
     return obs_tensor
 
+
 # generate the entire images
 def generate_entrie_images(img_origin, img_grad, img_grad_overlay, img_integrad, img_integrad_overlay):
-    img_origin=np.uint8(img_origin*255)
-    #img_grad=np.uint8(img_grad*255)
+    img_origin = np.uint8(img_origin * 255)
+    # img_grad=np.uint8(img_grad*255)
     img_grad_overlay = np.uint8(img_grad_overlay * 255)
-    #img_integrad= np.uint8(img_integrad * 255)
+    # img_integrad= np.uint8(img_integrad * 255)
     img_integrad_overlay = np.uint8(img_integrad_overlay * 255)
     blank = np.ones((img_grad.shape[0], 10, 3), dtype=np.uint8) * 255
     blank_hor = np.ones((10, 20 + img_grad.shape[0] * 3, 3), dtype=np.uint8) * 255
