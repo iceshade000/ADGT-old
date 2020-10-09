@@ -21,6 +21,7 @@ class ADGT():
     testset=None
     trainloader=None
     testloader=None
+    signal_estimator=None
 
     attack=None
     min=None
@@ -383,13 +384,13 @@ class ADGT():
             index=indices[now]
             now+=1
             n4 = index % 2
-            index = int(index / 2)
+            index = index//2
             n3 = index % W
-            index = int(index / W)
+            index = index// W
             n2 = index % H
-            index = int(index / H)
+            index = index// H
             n1 = index % C
-            index = int(index / C)
+            index = index// C
             n0 = index
             if jilu[n0]<inject_num and pan[0,n1,n2,n3,n4]==0:
                 jilu[n0]+=1
@@ -599,7 +600,7 @@ class ADGT():
         print('save checkpoints to :', checkpointdir)
         torch.save(model,os.path.join(checkpointdir,'model.ckpt'))
         return model
-    def explain(self,img,label,logdir=None,model=None,method='GradientSHAP',attack=True,random=False,improve=False,suffix=''):
+    def explain(self,img,label,logdir=None,model=None,method='GradientSHAP',attack=True,random=False,improve=False,suffix='',train_loader=None):
         '''
         input:
         img: batch X channels X height X width [BCHW], torch Tensor
@@ -639,8 +640,11 @@ class ADGT():
             img=img.cuda()
             label=label.cuda()
 
-        def obtain_explain(alg,random):
-            obj = alg.Explainer(model)
+        def obtain_explain(alg,random,appendix=None):
+            if appendix is None:
+                obj = alg.Explainer(model)
+            else:
+                obj = alg.Explainer(model,appendix)
             mask = obj.get_attribution_map(img, label)
             mask = torch.mean(mask, 1, keepdim=True)
             if mask.requires_grad:
@@ -689,6 +693,14 @@ class ADGT():
         elif method=='RectGrad':
             from attribution_methods import RectGrad
             mask, mask_random = obtain_explain(RectGrad, random)
+        elif method=='PatternNet':
+            from attribution_methods import PatternNet
+            if self.signal_estimator is None:
+                self.signal_estimator = PatternNet.SignalEstimator(model)
+                if self.trainloader is None:
+                    self.trainloader=train_loader
+                self.signal_estimator.train_explain(self.trainloader)
+            mask, mask_random = obtain_explain(PatternNet, random,self.signal_estimator)
         else:
             print('no this method')
 
@@ -727,6 +739,142 @@ class ADGT():
                 print('quantitative evaluation:', Q_value)
                 print('quantitative evaluation:',Q_value,file=f)
             f.close()
+            #cam=mask*0.5+img*0.5
+            #save_images(cam, os.path.join(logdir, method, 'cam.jpg'))
+            #if img.shape[0]==1:
+            #    from utils.visualization import show_cam
+            #    show_cam(img,mask, os.path.join(logdir, method, 'cam.jpg'))
+    def explain_all(self,img,label,logdir=None,model=None,method='GradientSHAP',attack=True,random=False,improve=False,
+                    suffix='',train_loader=None):
+        '''
+        input:
+        img: batch X channels X height X width [BCHW], torch Tensor
+
+        output:
+        attribution_map: batch X height X width,numpy
+        '''
+        if not attack:
+            if model is None:
+                if improve:
+                    model=self.improve_model
+                else:
+                    model=self.normal_model
+        else:
+            if model is None:
+                if improve:
+                    model = self.improve_model
+                else:
+                    model = self.gt_model
+            img=self.attack_img(img,label)
+
+        def weights_init(m):
+            classname = m.__class__.__name__
+
+            # print(classname)
+            if classname.find('Conv') != -1:
+                nn.init.xavier_normal_(m.weight.data)
+            elif classname.find('Linear') != -1:
+                nn.init.xavier_normal_(m.weight.data)
+                m.bias.data.fill_(0)
+        if random:
+            import copy
+            random_model=copy.deepcopy(model)
+            random_model.apply(weights_init)
+
+        if self.use_cuda:
+            img=img.cuda()
+            label=label.cuda()
+
+        def obtain_explain(alg, random, train_loader=None):
+            if train_loader is None:
+                obj = alg.Explainer(model)
+            else:
+                obj = alg.Explainer(model, train_loader)
+            result=img.clone().cpu().numpy()
+            #print('resultshape',result.shape)
+            for i in range(self.nclass[self.dataset_name]):
+                templabel=torch.ones_like(label)*i
+                mask = obj.get_attribution_map(img.clone(), templabel)
+                mask = torch.mean(mask, 1, keepdim=True)+torch.zeros_like(img)
+                if mask.requires_grad:
+                    mask=mask.detach()
+                mask = mask.cpu().numpy()
+                #print(mask.shape)
+                result=np.concatenate((result,mask),0)
+            mask_random=None
+            return result,mask_random
+        model=model.eval()
+        if method=='GradientSHAP':
+            from attribution_methods import GradientSHAP
+            mask,mask_random=obtain_explain(GradientSHAP,random)
+        elif method=='DeepLIFTSHAP':
+            from attribution_methods import DeepLIFTSHAP
+            mask,mask_random=obtain_explain(DeepLIFTSHAP,random)
+        elif method=='Guided_BackProb':
+            from attribution_methods import Guided_BackProp
+            mask,mask_random=obtain_explain(Guided_BackProp, random)
+        elif method=='DeepLIFT':
+            from attribution_methods import DeepLIFT
+            mask,mask_random=obtain_explain(DeepLIFT, random)
+        elif method=='IntegratedGradients':
+            from attribution_methods import IntegratedGradients
+            mask,mask_random=obtain_explain(IntegratedGradients, random)
+        elif method=='InputXGradient':
+            from attribution_methods import InputXGradient
+            mask,mask_random=obtain_explain(InputXGradient, random)
+        elif method == 'Occlusion':
+            from attribution_methods import Occlusion
+            mask, mask_random = obtain_explain(Occlusion, random)
+        elif method == 'Saliency':
+            from attribution_methods import Saliency
+            mask, mask_random = obtain_explain(Saliency, random)
+        elif method=='GradCAM':
+            from attribution_methods import Grad_CAM
+            mask, mask_random = obtain_explain(Grad_CAM, random)
+        elif method=='SmoothGrad':
+            from attribution_methods import SmoothGrad
+            mask, mask_random = obtain_explain(SmoothGrad, random)
+        elif method=='RectGrad':
+            from attribution_methods import RectGrad
+            mask, mask_random = obtain_explain(RectGrad, random)
+        elif method=='PatternNet':
+            from attribution_methods import PatternNet
+            if self.signal_estimator is None:
+                self.signal_estimator = PatternNet.SignalEstimator(model)
+                if self.trainloader is None:
+                    self.trainloader=train_loader
+                self.signal_estimator.train_explain(self.trainloader)
+            mask, mask_random = obtain_explain(PatternNet, random,self.signal_estimator)
+        else:
+            print('no this method')
+
+        if logdir is not None:
+            if not os.path.exists(os.path.join(logdir,method+suffix)):  # 如果路径不存在
+                os.makedirs(os.path.join(logdir,method+suffix))
+            if img.requires_grad:
+                img=img.detach()
+            img=img.cpu().numpy()
+
+            if attack:
+                if self.min is not None:
+                    save_images(img, os.path.join(logdir, method+suffix, 'raw_attack.png'), self.min.numpy(), self.max.numpy())
+                if improve:
+                    save_images(mask, os.path.join(logdir, method + suffix, 'mask_attack_improve.png'))
+                else:
+                    save_images(mask, os.path.join(logdir, method+suffix, 'mask_attack.png'))
+                if random:
+                    save_images(mask_random, os.path.join(logdir, method+suffix, 'mask_random_attack.png'))
+            else:
+                if self.min is not None:
+                    save_images(img, os.path.join(logdir, method+suffix, 'raw.png'), self.min.numpy(), self.max.numpy())
+                if improve:
+                    save_images(mask, os.path.join(logdir, method+suffix, 'mask_improve.png'))
+
+                else:
+                    save_images(mask, os.path.join(logdir, method+suffix, 'mask.png'))
+
+                if random:
+                    save_images(mask_random, os.path.join(logdir, method+suffix, 'mask_random.png'))
             #cam=mask*0.5+img*0.5
             #save_images(cam, os.path.join(logdir, method, 'cam.jpg'))
             #if img.shape[0]==1:

@@ -1,18 +1,20 @@
 import ADGT
 import os
-from model import resnet,resnet_small,resnet_RPB,resnet_small_nobias
+from model import resnet,resnet_small,resnet_RPB,resnet_small_nobias,vgg
 from utils import obtain_transform
 import torch
 import torchvision
 from utils.AdamW import AdamW
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "7"
-ROOT='/newsd4/zgh/data'
-CKPTDIR='/newsd4/zgh/ADGT/CKPT'
+#ROOT='/newsd4/zgh/data'
+#CKPTDIR='/newsd4/zgh/ADGT/CKPT'
+ROOT='~/workspace/data'
+CKPTDIR='~/workspace/CKPT'
 gamma=0.1
 BATCHSIZE=128
 AUG=False
-MODEL='linear'#'resnet'#
+MODEL='resnet'#'vgg'#'linear'#
 CKPTDIR=os.path.join(CKPTDIR,MODEL)
 DATASET_NAME='C10'#'MNIST'#'RestrictedImageNet'#'Flower102'#'C100'#
 use_cuda=True
@@ -20,7 +22,7 @@ PROB=0.3
 PLUGIN=0
 MAX_EPOCH=50
 wd=0
-method=['SmoothGrad','InputXGradient','Guided_BackProb','Saliency','DeepLIFT','RectGrad','IntegratedGradients']
+method=['SmoothGrad','InputXGradient','Guided_BackProb','Saliency','DeepLIFT','RectGrad','IntegratedGradients','PatternNet']
 #method=['SmoothGrad']
 torch.set_num_threads(4)
 seed = 0
@@ -84,6 +86,19 @@ elif MODEL == 'linear':
         net = resnet.GLM(in_features=32*32*3, out_features=100)
     elif adgt.dataset_name == 'Flower102':
         net = resnet.GLM(in_features=3, out_features=102)
+elif MODEL=='vgg':
+    if adgt.dataset_name == 'MNIST':
+        net = vgg.vgg11_bn(num_classes=10,in_channels=1)
+    elif adgt.dataset_name == 'C10':
+        net = vgg.vgg11_bn(num_classes=10)
+    elif adgt.dataset_name == 'C100':
+        net = vgg.vgg11_bn(num_classes=10)
+    elif adgt.dataset_name == 'Flower102':
+        net = vgg.vgg11_bn(num_classes=102)
+    elif adgt.dataset_name == 'RestrictedImageNet':
+        net = vgg.vgg11_bn(num_classes=9)
+        net = net.cuda()
+        net=torch.nn.DataParallel(net)
 
 
 if use_cuda:

@@ -2,21 +2,21 @@ import ADGT
 import os
 from model import resnet,resnet_small
 import torchvision.transforms as transforms
-os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6,7"
+os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6"
 import torch
 import torchvision
 from utils import obtain_transform
 
 use_cuda=True
-method=['SmoothGrad','GradientSHAP','InputXGradient','Guided_BackProb','Saliency','DeepLIFT','DeepLIFTSHAP','IntegratedGradients']
+method=['SmoothGrad','InputXGradient','Guided_BackProb','Saliency','DeepLIFT','RectGrad','IntegratedGradients']
 ROOT='/newsd4/zgh/data'
 CKPTDIR='/newsd4/zgh/ADGT/CKPT'
 gamma=0.2
-BATCHSIZE=16
+BATCHSIZE=128
 AUG=True
-MODEL='resnet'#'linear'#
+MODEL='vgg'#'resnet'#'linear'#
 CKPTDIR=os.path.join(CKPTDIR,MODEL)
-DATASET_NAME='C10'#'Flower102'#'C100'#'MNIST'#
+DATASET_NAME='C10'#'MNIST'#'Flower102'#'C100'#
 PROB=0.1
 PLUGIN=1
 
@@ -51,28 +51,50 @@ elif MODEL=='linear':
         net = torch.nn.Linear(in_features=3,out_features=100)
     elif adgt.dataset_name =='Flower102':
         net = torch.nn.Linear(in_features=3,out_features=102)
-'''
-#checkpointdir = os.path.join(CKPTDIR, adgt.dataset_name, 'attack_'+str(1)+'_'+str(0.0)+str(AUG))
-#adgt.load_gt(checkpointdir)
+
+#pth='attack_1_0.0Falseresnet'
+pth='attack_1_0.0Falsevgg'
+checkpointdir = os.path.join(CKPTDIR, adgt.dataset_name, pth)
+adgt.load_gt(checkpointdir)
 
 #checkpointdir = os.path.join(CKPTDIR,  adgt.dataset_name, 'normal'+str(AUG))
 #adgt.load_normal(checkpointdir)
 #checkpointdir = os.path.join(CKPTDIR, adgt.dataset_name, 'removeSPP'+'_'+str(gamma)+str(AUG))
 #adgt.load_improve(checkpointdir)
 #checkpointdir = os.path.join(CKPTDIR,  adgt.dataset_name, 'mixup_'+str(1)+str(AUG))
-checkpointdir = os.path.join(CKPTDIR,  adgt.dataset_name, 'adversarial_'+'l2'+'_'+str(0.3)+str(AUG))
+#checkpointdir = os.path.join(CKPTDIR,  adgt.dataset_name, 'adversarial_'+'l2'+'_'+str(0.3)+str(AUG))
 #checkpointdir = os.path.join(CKPTDIR,  adgt.dataset_name, 'adversarial_'+'l2'+'_'+str(1.5)+str(AUG))
-
-adgt.load_normal(checkpointdir)
+#adgt.load_normal(checkpointdir)
+K=adgt.nclass[DATASET_NAME]
+NUMBER=1
+iii=0
+img=label=None
 for data,label in adgt.trainloader:
-        for m in method:
-            print(m)
-            if m=='IntegratedGradients':
-                adgt.parallel()
-            adgt.explain(data.clone(),label.clone(), 'result',method=m, random=False,attack=False)
-            #adgt.explain(data.clone(),label.clone(), 'result',method=m, random=False,attack=False,improve=True,suffix=str(gamma))
-            #adgt.explain(data.clone(), label.clone(), 'result', method=m, random=False, attack=True)
+    if img is None:
+        img=data
+        target=label
+    else:
+        img=torch.cat((img,data),0)
+        target=torch.cat((target,label),0)
+    iii+=1
+    if iii>=3:
         break
+imgtemp=[]
+targettemp=[]
+for i in range(K):
+    imgtemp.append(img[target==i][0:NUMBER])
+    targettemp.append(target[target==i][0:NUMBER])
+img=torch.cat(tuple(imgtemp),0)
+target=torch.cat(tuple(targettemp),0)
+
+for m in method:
+    print(m)
+    if m=='IntegratedGradients':
+        adgt.parallel()
+    adgt.explain_all(img.clone(),target.clone(), 'result',method=m, random=False,attack=True)
+    #adgt.explain(data.clone(),label.clone(), 'result',method=m, random=False,attack=False,improve=True,suffix=str(gamma))
+    #adgt.explain(data.clone(), label.clone(), 'result', method=m, random=False, attack=True)
+
 '''
 prob=[0]
 model=[]
@@ -80,14 +102,14 @@ for PLUGIN in range(1):
     for p in prob:
         suffix = 'wd' + str(p)
         #suffix = 'flooding'
-        '''
+        
         checkpointdir = os.path.join(CKPTDIR, adgt.dataset_name,
                                  'RPB_' + str(1) + '_' + str(0.2) + '_' + str(1) + str(AUG)+suffix)
         #checkpointdir = os.path.join(CKPTDIR, adgt.dataset_name,
         #                             'RPB_batch' +  '_' + str(10) + str(AUG)+suffix)
         adgt.load_RPB(checkpointdir)
         model.append(adgt.RPB_model)
-        '''
+        
         checkpointdir = os.path.join(CKPTDIR, adgt.dataset_name, 'normal'+str(AUG)+suffix)
         adgt.load_normal(checkpointdir)
         model.append(adgt.normal_model)
@@ -110,6 +132,6 @@ for data,label in adgt.trainloader:
                     adgt.explain(data.clone(),label.clone(),pth, method=m,
                      model=model[i],random=False,attack=False)
         break
-
+'''
 
 
