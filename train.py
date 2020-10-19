@@ -1,12 +1,12 @@
 import ADGT
 import os
-from model import resnet,resnet_small,resnet_RPB,resnet_small_nobias,vgg
+from model import resnet,resnet_small,resnet_RPB,resnet_small_nobias,vgg,resnet_small_noskip
 from utils import obtain_transform
 import torch
 import torchvision
 from utils.AdamW import AdamW
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "7"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 #ROOT='/newsd4/zgh/data'
 #CKPTDIR='/newsd4/zgh/ADGT/CKPT'
 ROOT='~/workspace/data'
@@ -14,15 +14,16 @@ CKPTDIR='~/workspace/CKPT'
 gamma=0.1
 BATCHSIZE=128
 AUG=False
-MODEL='resnet'#'vgg'#'linear'#
+MODEL='linear'#'resnet_noskip'#'vgg'#'resnet'#
 CKPTDIR=os.path.join(CKPTDIR,MODEL)
-DATASET_NAME='C10'#'MNIST'#'RestrictedImageNet'#'Flower102'#'C100'#
+DATASET_NAME='C10'#'RestrictedImageNet'#'MNIST'#'Flower102'#'C100'#
 use_cuda=True
 PROB=0.3
 PLUGIN=0
 MAX_EPOCH=50
 wd=0
-method=['SmoothGrad','InputXGradient','Guided_BackProb','Saliency','DeepLIFT','RectGrad','IntegratedGradients','PatternNet']
+method=['SmoothGrad','InputXGradient','Guided_BackProb','Saliency','DeepLIFT','RectGrad','PatternNet']#,'IntegratedGradients'
+
 #method=['SmoothGrad']
 torch.set_num_threads(4)
 seed = 0
@@ -39,7 +40,7 @@ transform_train,transform_test=obtain_transform.obtain_transform(DATASET_NAME)
 adgt.prepare_dataset_loader(root=ROOT,train=False,transform=transform_test,batch_size=BATCHSIZE,shuffle=False)
 adgt.prepare_dataset_loader(root=ROOT, train=True, transform=transform_test, batch_size=BATCHSIZE, shuffle=True)
 K=adgt.nclass[DATASET_NAME]
-NUMBER=K
+NUMBER=1
 iii=0
 for data,label in adgt.trainloader:
     if img is None:
@@ -75,8 +76,7 @@ if MODEL=='resnet':
         #net=resnet_RPB.resnet50(num_classes=102,prob=PROB,plugin_layer=PLUGIN)
     elif adgt.dataset_name == 'RestrictedImageNet':
         net = resnet.resnet50(num_classes=9)
-        net = net.cuda()
-        net=torch.nn.DataParallel(net)
+        net=torch.nn.DataParallel(net).cuda()
 elif MODEL == 'linear':
     if adgt.dataset_name == 'MNIST':
         net = resnet.GLM(in_features=28*28, out_features=10)
@@ -97,9 +97,22 @@ elif MODEL=='vgg':
         net = vgg.vgg11_bn(num_classes=102)
     elif adgt.dataset_name == 'RestrictedImageNet':
         net = vgg.vgg11_bn(num_classes=9)
-        net = net.cuda()
-        net=torch.nn.DataParallel(net)
-
+        net=torch.nn.DataParallel(net).cuda()
+elif MODEL=='resnet_noskip':
+    if adgt.dataset_name == 'MNIST':
+        net = resnet_small_noskip.resnet18(indim=1, num_class=10)
+    elif adgt.dataset_name =='C10':
+        net=resnet_small_noskip.resnet18(indim=3,num_class=10)
+        #net = resnet_small_nobias.resnet18(indim=3, num_class=10)
+    elif adgt.dataset_name =='C100':
+        net=resnet_small_noskip.resnet18(indim=3,num_class=100)
+        #net = resnet.resnet50(num_classes=100)
+    elif adgt.dataset_name =='Flower102':
+        net = resnet.resnet50(num_classes=102)
+        #net=resnet_RPB.resnet50(num_classes=102,prob=PROB,plugin_layer=PLUGIN)
+    elif adgt.dataset_name == 'RestrictedImageNet':
+        net = resnet.resnet50(num_classes=9)
+        net=torch.nn.DataParallel(net).cuda()
 
 if use_cuda:
     net=net.cuda()
@@ -122,14 +135,12 @@ def weights_init(m):
 suffix=MODEL
 #suffix='flooding'
 optimizer=AdamW(net.parameters(), lr=1e-3, betas=(0.5, 0.9),weight_decay=wd)
-
 print('start attack train')
 net=adgt.attack_train(net,'result',CKPTDIR,inject_num=1,alpha=0.0,suffix=suffix,img=img,target=target,method=method)
 net.apply(weights_init)
 print('start normal train')
 net=adgt.normal_train(net,'result',CKPTDIR,suffix=suffix,img=img,target=target,method=method)
 net.apply(weights_init)
-
 print('start RPB train')
 adgt.RPB_train(net,'result',CKPTDIR,prob=1,alpha=0.2,point_size=1,suffix=suffix,img=img,target=target,method=method)
 net.apply(weights_init)

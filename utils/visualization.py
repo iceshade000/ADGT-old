@@ -41,7 +41,7 @@ def save_images(X, save_path,minn=None,maxx=None):
     #    X=np.uint8(255 * X)
 
     n_samples = X.shape[0]
-    rows = int(np.sqrt(n_samples))
+    rows = int(np.sqrt(n_samples))+1
     while n_samples % rows != 0:
         rows -= 1
 

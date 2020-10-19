@@ -30,7 +30,7 @@ class ADGT():
     use_cuda=False
     aug=False
 
-    nclass={'MNIST':10,'C10':10,'C100':100,'Flower102':102,'RestrictedImageNet':9}
+    nclass={'MNIST':10,'C10':10,'C100':100,'Flower102':102,'RestrictedImageNet':9,'ImageNet':1000}
 
     def __init__(self,name='MNIST',nclass=None,use_cuda=False,min=None,max=None,attack=None,normal_model=None,
                  gt_model=None,aug=False):
@@ -90,7 +90,7 @@ class ADGT():
                                                            num_workers=num_workers)
 
     def normal_train(self,model,logdir,checkpointdir,trainloader=None,testloader=None,optimizer=None,
-                     schedule=None,criterion=nn.CrossEntropyLoss(),max_epoch=50,suffix='',img=None,target=None,method=None):
+                     schedule=None,criterion=nn.CrossEntropyLoss(),max_epoch=50,suffix='',img=None,target=None,method=None,save=False):
         '''
         Input:
 
@@ -109,17 +109,17 @@ class ADGT():
         print('save logs to :', logdir)
 
         normal_train(model, trainloader, testloader, optimizer,schedule, criterion, max_epoch, writer, self.use_cuda,
-                     img,target,method,self.explain,explain_dir=logdir)
+                     img,target,method,self.explain_all,explain_dir=logdir)
         writer.close()
         if self.normal_model is None:
             self.normal_model=model
 
         checkpointdir = os.path.join(checkpointdir, self.dataset_name, 'normal'+str(self.aug)+suffix)
-
-        if not os.path.exists(checkpointdir):  # 如果路径不存在
-            os.makedirs(checkpointdir)
-        print('save checkpoints to :', checkpointdir)
-        torch.save(model,os.path.join(checkpointdir,'model.ckpt'))
+        if save:
+            if not os.path.exists(checkpointdir):  # 如果路径不存在
+                os.makedirs(checkpointdir)
+            print('save checkpoints to :', checkpointdir)
+            torch.save(model,os.path.join(checkpointdir,'model.ckpt'))
         return model
     def L1_train(self,model,logdir,checkpointdir,trainloader=None,testloader=None,optimizer=None,
                      schedule=None,criterion=nn.CrossEntropyLoss(),max_epoch=50,alpha=0.01):
@@ -180,7 +180,7 @@ class ADGT():
         return model
     def attack_train(self,model,logdir,checkpointdir,trainloader=None,testloader=None,optimizer=None,
                      schedule=None,criterion=nn.CrossEntropyLoss(),max_epoch=50,inject_num=1,random=False,alpha=0.0,suffix='',
-                     img=None,target=None,method=None):
+                     img=None,target=None,method=None,save=False):
         '''
         Input:
 
@@ -212,14 +212,15 @@ class ADGT():
         print('save logs to :', logdir)
 
         attack_train(model, trainloader, testloader, optimizer,schedule, criterion, max_epoch, writer, self.use_cuda,
-                     self.attack,self.min,self.max,img,target,method,self.explain,explain_dir=logdir)
+                     self.attack,self.min,self.max,img,target,method,self.explain_all,explain_dir=logdir)
         writer.close()
         if self.gt_model is None:
             self.gt_model=model
 
-        checkpointdir = os.path.join(checkpointdir, self.dataset_name, 'attack_'+str(inject_num)+'_'+str(alpha)+r+str(self.aug)+suffix)
+        if save:
+            checkpointdir = os.path.join(checkpointdir, self.dataset_name, 'attack_'+str(inject_num)+'_'+str(alpha)+r+str(self.aug)+suffix)
 
-        self.save_gt(checkpointdir)
+            self.save_gt(checkpointdir)
         return model
 
     def attack_img(self,img,label):
@@ -404,75 +405,9 @@ class ADGT():
                 print('class',n0,'now',now)
         print(self.attack)
 
-    def removeSPP_train(self,model,logdir,checkpointdir,trainloader=None,testloader=None,optimizer=None,
-                     schedule=None,criterion=nn.CrossEntropyLoss(),max_epoch=50,gamma=0.5):
-        '''
-        Input:
-
-        Output: model
-        '''
-        if trainloader is None:
-            trainloader=self.trainloader
-        if testloader is None:
-            testloader=self.testloader
-        if optimizer is None:
-            optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, betas=(0.5, 0.9))
-        if self.use_cuda:
-            model=model.cuda()
-
-        if self.mu is None:
-            self.obtain_statistics()
-        logdir=os.path.join(logdir,self.dataset_name,'removeSPP'+'_'+str(gamma)+str(self.aug))
-        writer = SummaryWriter(log_dir=logdir )
-        print('save logs to :', logdir)
-        mu=self.mu
-        sigma=torch.sqrt(self.var)
-        removeSPP_train(model, trainloader, testloader, optimizer,schedule, criterion, max_epoch, writer, self.use_cuda,
-                     mu,sigma,prob=gamma)
-        writer.close()
-
-        checkpointdir = os.path.join(checkpointdir, self.dataset_name, 'removeSPP'+'_'+str(gamma)+str(self.aug))
-
-        if not os.path.exists(checkpointdir):  # 如果路径不存在
-            os.makedirs(checkpointdir)
-        print('save checkpoints to :', checkpointdir)
-        torch.save(model, os.path.join(checkpointdir, 'model.ckpt'))
-        return model
-    def remove_attack_train(self,model,logdir,checkpointdir,trainloader=None,testloader=None,optimizer=None,
-                     schedule=None,criterion=nn.CrossEntropyLoss(),max_epoch=50,gamma=0.5,alpha=0.0):
-        if trainloader is None:
-            trainloader=self.trainloader
-        if testloader is None:
-            testloader=self.testloader
-        if optimizer is None:
-            optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, betas=(0.5, 0.9))
-        if self.use_cuda:
-            model=model.cuda()
-
-        if self.mu is None:
-            self.obtain_statistics()
-        if self.attack is None:
-            self.obtain_attack(inject_num=1,alpha=alpha)
-        logdir=os.path.join(logdir,self.dataset_name,'remove_attack'+'_'+str(gamma)+str(self.aug))
-        writer = SummaryWriter(log_dir=logdir )
-        print('save logs to :', logdir)
-        mu=self.mu
-        sigma=torch.sqrt(self.var)
-        remove_attack_train(model, trainloader, testloader, optimizer,schedule, criterion, max_epoch, writer, self.use_cuda,
-                     mu,sigma,prob=gamma,attack=self.attack,min=self.min,max=self.max)
-        writer.close()
-
-        checkpointdir = os.path.join(checkpointdir, self.dataset_name, 'remove_attack'+'_'+str(gamma)+'_'+str(alpha)+str(self.aug))
-
-        if not os.path.exists(checkpointdir):  # 如果路径不存在
-            os.makedirs(checkpointdir)
-        print('save checkpoints to :', checkpointdir)
-        torch.save(model, os.path.join(checkpointdir, 'model.ckpt'))
-        return model
-
     def RPB_train(self,model,logdir,checkpointdir,trainloader=None,testloader=None,optimizer=None,
                      schedule=None,criterion=nn.CrossEntropyLoss(),max_epoch=50,prob=0.5,alpha=0.2,point_size=1,suffix='',
-                  img=None,target=None,method=None):
+                  img=None,target=None,method=None,save=False):
         '''
         Input:
 
@@ -493,82 +428,20 @@ class ADGT():
         from model.resnet_RPB import RPB
         rpb=RPB(prob=alpha,point_size=point_size)
         RPB_train(model,rpb, trainloader, testloader, optimizer,schedule, criterion, max_epoch, writer, self.use_cuda,
-                  prob,alpha,img,target,method,self.explain,explain_dir=logdir)
+                  prob,alpha,img,target,method,self.explain_all,explain_dir=logdir)
         writer.close()
         if self.RPB_model is None:
             self.RPB_model=model
         checkpointdir = os.path.join(checkpointdir, self.dataset_name, 'RPB_'+str(prob)+'_'+str(alpha)+'_'
                                      +str(point_size)+str(self.aug)+suffix)
 
-        if not os.path.exists(checkpointdir):  # 如果路径不存在
-            os.makedirs(checkpointdir)
-        print('save checkpoints to :', checkpointdir)
-        torch.save(model,os.path.join(checkpointdir,'model.ckpt'))
+        if save:
+            if not os.path.exists(checkpointdir):  # 如果路径不存在
+                os.makedirs(checkpointdir)
+            print('save checkpoints to :', checkpointdir)
+            torch.save(model,os.path.join(checkpointdir,'model.ckpt'))
         return model
-    def RPB_batch_train(self,model,logdir,checkpointdir,trainloader=None,testloader=None,optimizer=None,
-                     schedule=None,criterion=nn.CrossEntropyLoss(),max_epoch=50,point_size=1,suffix=''):
-        '''
-        Input:
 
-        Output: model
-        '''
-        if trainloader is None:
-            trainloader=self.trainloader
-        if testloader is None:
-            testloader=self.testloader
-        if optimizer is None:
-            optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, betas=(0.5, 0.9))
-        if self.use_cuda:
-            model=model.cuda()
-
-        logdir=os.path.join(logdir,self.dataset_name,'RPB_batch'+'_'+str(point_size)+str(self.aug)+suffix)
-        writer = SummaryWriter(log_dir=logdir )
-        print('save logs to :', logdir)
-        from model.resnet_RPB import RPB_batch
-        rpb=RPB_batch(point_size=point_size)
-        RPB_train(model,rpb, trainloader, testloader, optimizer,schedule, criterion, max_epoch, writer, self.use_cuda)
-        writer.close()
-        if self.RPB_model is None:
-            self.RPB_model=model
-        checkpointdir = os.path.join(checkpointdir, self.dataset_name, 'RPB_batch'+'_'
-                                     +str(point_size)+str(self.aug)+suffix)
-
-        if not os.path.exists(checkpointdir):  # 如果路径不存在
-            os.makedirs(checkpointdir)
-        print('save checkpoints to :', checkpointdir)
-        torch.save(model,os.path.join(checkpointdir,'model.ckpt'))
-        return model
-    def L1_RPB_train(self,model,logdir,checkpointdir,trainloader=None,testloader=None,optimizer=None,
-                     schedule=None,criterion=nn.CrossEntropyLoss(),max_epoch=50,prob=0.1,point_size=1,alpha=0.1):
-        '''
-        Input:
-
-        Output: model
-        '''
-        if trainloader is None:
-            trainloader=self.trainloader
-        if testloader is None:
-            testloader=self.testloader
-        if optimizer is None:
-            optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, betas=(0.5, 0.9))
-        if self.use_cuda:
-            model=model.cuda()
-
-        logdir=os.path.join(logdir,self.dataset_name,'L1_RPB_'+str(prob)+'_'+str(point_size)+'_'+str(alpha)+str(self.aug))
-        writer = SummaryWriter(log_dir=logdir )
-        print('save logs to :', logdir)
-        from model.resnet_RPB import RPB
-        rpb=RPB(prob=prob,point_size=point_size)
-        L1_RPB_train(model,rpb, trainloader, testloader, optimizer,schedule, criterion, max_epoch, writer, self.use_cuda,prob,alpha)
-        writer.close()
-        checkpointdir = os.path.join(checkpointdir, self.dataset_name, 'L1_RPB_'+str(prob)+'_'
-                                     +str(point_size)+'_'+str(alpha)+str(self.aug))
-
-        if not os.path.exists(checkpointdir):  # 如果路径不存在
-            os.makedirs(checkpointdir)
-        print('save checkpoints to :', checkpointdir)
-        torch.save(model,os.path.join(checkpointdir,'model.ckpt'))
-        return model
     def adversarial_train(self,model,logdir,checkpointdir,trainloader=None,testloader=None,optimizer=None,
                      schedule=None,criterion=nn.CrossEntropyLoss(),max_epoch=50,perturbation_type='l2',eps=0.3):
         '''
@@ -600,6 +473,79 @@ class ADGT():
         print('save checkpoints to :', checkpointdir)
         torch.save(model,os.path.join(checkpointdir,'model.ckpt'))
         return model
+    def get_mask(self,img,model,method,label,topklabel=None,train_loader=None):
+        random=None
+        def obtain_explain(alg, random=None, train_loader=None):
+            if train_loader is None:
+                obj = alg.Explainer(model)
+            else:
+                obj = alg.Explainer(model, train_loader)
+            result=img.clone().cpu().numpy()
+            #print('resultshape',result.shape)
+            if self.nclass[self.dataset_name]<15:
+                for i in range(self.nclass[self.dataset_name]):
+                    templabel=torch.ones_like(label)*i
+                    mask = obj.get_attribution_map(img.clone(), templabel)
+                    #mask = torch.mean(mask, 1, keepdim=True)+torch.zeros_like(img)
+                    if mask.requires_grad:
+                        mask=mask.detach()
+                    mask = mask.cpu().numpy()
+                    result=np.concatenate((result,mask),0)
+            else:
+                for i in range(topklabel.size(1)):
+                    templabel=topklabel[:,i]
+                    mask = obj.get_attribution_map(img.clone(), templabel)
+                    # mask = torch.mean(mask, 1, keepdim=True)+torch.zeros_like(img)
+                    if mask.requires_grad:
+                        mask = mask.detach()
+                    mask = mask.cpu().numpy()
+                    result = np.concatenate((result, mask), 0)
+            mask_random=None
+            return result,mask_random
+        if method=='GradientSHAP':
+            from attribution_methods import GradientSHAP
+            mask,mask_random=obtain_explain(GradientSHAP,random)
+        elif method=='DeepLIFTSHAP':
+            from attribution_methods import DeepLIFTSHAP
+            mask,mask_random=obtain_explain(DeepLIFTSHAP,random)
+        elif method=='Guided_BackProb':
+            from attribution_methods import Guided_BackProp
+            mask,mask_random=obtain_explain(Guided_BackProp, random)
+        elif method=='DeepLIFT':
+            from attribution_methods import DeepLIFT
+            mask,mask_random=obtain_explain(DeepLIFT, random)
+        elif method=='IntegratedGradients':
+            from attribution_methods import IntegratedGradients
+            mask,mask_random=obtain_explain(IntegratedGradients, random)
+        elif method=='InputXGradient':
+            from attribution_methods import InputXGradient
+            mask,mask_random=obtain_explain(InputXGradient, random)
+        elif method == 'Occlusion':
+            from attribution_methods import Occlusion
+            mask, mask_random = obtain_explain(Occlusion, random)
+        elif method == 'Saliency':
+            from attribution_methods import Saliency
+            mask, mask_random = obtain_explain(Saliency, random)
+        elif method=='GradCAM':
+            from attribution_methods import Grad_CAM
+            mask, mask_random = obtain_explain(Grad_CAM, random)
+        elif method=='SmoothGrad':
+            from attribution_methods import SmoothGrad
+            mask, mask_random = obtain_explain(SmoothGrad, random)
+        elif method=='RectGrad':
+            from attribution_methods import RectGrad
+            mask, mask_random = obtain_explain(RectGrad, random)
+        elif method=='PatternNet':
+            from attribution_methods import PatternNet
+            if self.signal_estimator is None:
+                self.signal_estimator = PatternNet.SignalEstimator(model)
+                if self.trainloader is None:
+                    self.trainloader=train_loader
+                self.signal_estimator.train_explain(self.trainloader)
+            mask, mask_random = obtain_explain(PatternNet, random,self.signal_estimator)
+        else:
+            print('no this method')
+        return mask,mask_random
     def explain(self,img,label,logdir=None,model=None,method='GradientSHAP',attack=True,random=False,improve=False,suffix='',train_loader=None):
         '''
         input:
@@ -646,7 +592,7 @@ class ADGT():
             else:
                 obj = alg.Explainer(model,appendix)
             mask = obj.get_attribution_map(img, label)
-            mask = torch.mean(mask, 1, keepdim=True)
+            #mask = torch.mean(mask, 1, keepdim=True)
             if mask.requires_grad:
                 mask=mask.detach()
             mask = mask.cpu().numpy()
@@ -654,7 +600,7 @@ class ADGT():
             if random:
                 obj = alg.Explainer(random_model)
                 mask_random = obj.get_attribution_map(img, label)
-                mask_random = torch.mean(mask_random, 1, keepdim=True)
+                #mask_random = torch.mean(mask_random, 1, keepdim=True)
                 if mask_random.requires_grad:
                     mask_random = mask_random.detach()
                 mask_random = mask_random.cpu().numpy()
@@ -745,7 +691,7 @@ class ADGT():
             #    from utils.visualization import show_cam
             #    show_cam(img,mask, os.path.join(logdir, method, 'cam.jpg'))
     def explain_all(self,img,label,logdir=None,model=None,method='GradientSHAP',attack=True,random=False,improve=False,
-                    suffix='',train_loader=None):
+                    suffix='',train_loader=None,topklabel=None):
         '''
         input:
         img: batch X channels X height X width [BCHW], torch Tensor
@@ -785,68 +731,8 @@ class ADGT():
             img=img.cuda()
             label=label.cuda()
 
-        def obtain_explain(alg, random, train_loader=None):
-            if train_loader is None:
-                obj = alg.Explainer(model)
-            else:
-                obj = alg.Explainer(model, train_loader)
-            result=img.clone().cpu().numpy()
-            #print('resultshape',result.shape)
-            for i in range(self.nclass[self.dataset_name]):
-                templabel=torch.ones_like(label)*i
-                mask = obj.get_attribution_map(img.clone(), templabel)
-                mask = torch.mean(mask, 1, keepdim=True)+torch.zeros_like(img)
-                if mask.requires_grad:
-                    mask=mask.detach()
-                mask = mask.cpu().numpy()
-                #print(mask.shape)
-                result=np.concatenate((result,mask),0)
-            mask_random=None
-            return result,mask_random
         model=model.eval()
-        if method=='GradientSHAP':
-            from attribution_methods import GradientSHAP
-            mask,mask_random=obtain_explain(GradientSHAP,random)
-        elif method=='DeepLIFTSHAP':
-            from attribution_methods import DeepLIFTSHAP
-            mask,mask_random=obtain_explain(DeepLIFTSHAP,random)
-        elif method=='Guided_BackProb':
-            from attribution_methods import Guided_BackProp
-            mask,mask_random=obtain_explain(Guided_BackProp, random)
-        elif method=='DeepLIFT':
-            from attribution_methods import DeepLIFT
-            mask,mask_random=obtain_explain(DeepLIFT, random)
-        elif method=='IntegratedGradients':
-            from attribution_methods import IntegratedGradients
-            mask,mask_random=obtain_explain(IntegratedGradients, random)
-        elif method=='InputXGradient':
-            from attribution_methods import InputXGradient
-            mask,mask_random=obtain_explain(InputXGradient, random)
-        elif method == 'Occlusion':
-            from attribution_methods import Occlusion
-            mask, mask_random = obtain_explain(Occlusion, random)
-        elif method == 'Saliency':
-            from attribution_methods import Saliency
-            mask, mask_random = obtain_explain(Saliency, random)
-        elif method=='GradCAM':
-            from attribution_methods import Grad_CAM
-            mask, mask_random = obtain_explain(Grad_CAM, random)
-        elif method=='SmoothGrad':
-            from attribution_methods import SmoothGrad
-            mask, mask_random = obtain_explain(SmoothGrad, random)
-        elif method=='RectGrad':
-            from attribution_methods import RectGrad
-            mask, mask_random = obtain_explain(RectGrad, random)
-        elif method=='PatternNet':
-            from attribution_methods import PatternNet
-            if self.signal_estimator is None:
-                self.signal_estimator = PatternNet.SignalEstimator(model)
-                if self.trainloader is None:
-                    self.trainloader=train_loader
-                self.signal_estimator.train_explain(self.trainloader)
-            mask, mask_random = obtain_explain(PatternNet, random,self.signal_estimator)
-        else:
-            print('no this method')
+        mask,mask_random=self.get_mask(img,model,method,label,train_loader,topklabel)
 
         if logdir is not None:
             if not os.path.exists(os.path.join(logdir,method+suffix)):  # 如果路径不存在
@@ -881,6 +767,102 @@ class ADGT():
             #    from utils.visualization import show_cam
             #    show_cam(img,mask, os.path.join(logdir, method, 'cam.jpg'))
 
+    def explain_split(self,img,label,logdir=None,model=None,method='GradientSHAP',attack=True,random=False,improve=False,
+                    suffix='',train_loader=None,topklabel=None):
+        '''
+        input:
+        img: batch X channels X height X width [BCHW], torch Tensor
+
+        output:
+        attribution_map: batch X height X width,numpy
+        '''
+        if not attack:
+            if model is None:
+                if improve:
+                    model=self.improve_model
+                else:
+                    model=self.normal_model
+        else:
+            if model is None:
+                if improve:
+                    model = self.improve_model
+                else:
+                    model = self.gt_model
+            img=self.attack_img(img,label)
+
+        def weights_init(m):
+            classname = m.__class__.__name__
+
+            # print(classname)
+            if classname.find('Conv') != -1:
+                nn.init.xavier_normal_(m.weight.data)
+            elif classname.find('Linear') != -1:
+                nn.init.xavier_normal_(m.weight.data)
+                m.bias.data.fill_(0)
+        if random:
+            import copy
+            random_model=copy.deepcopy(model)
+            random_model.apply(weights_init)
+
+        if self.use_cuda:
+            img=img.cuda()
+            label=label.cuda()
+
+
+        model=model.eval()
+        mask,mask_random=self.get_mask(img,model,method,label,train_loader,topklabel)
+        def split(mask,k):
+            mask=torch.Tensor(mask)
+            temp=mask.view(-1,k,mask.size(1),mask.size(2),mask.size(3))
+            R=temp[1:]
+            B=torch.nn.Parameter(torch.rand(1,k,mask.size(1),mask.size(2),mask.size(3)))
+            a=torch.nn.Parameter(torch.zeros(temp.size(0),k,1,1,1))
+            from utils.AdamW import AdamW
+            optimizer = AdamW([a,B], lr=1e-4, betas=(0.5, 0.9), weight_decay=0)
+            for i in range(10000):
+                loss=torch.mean(torch.abs(torch.log(1+torch.exp(a))*B-R))
+                loss.backward()
+                optimizer.step()
+                if i %200==0:
+                    print(i,loss.item())
+            C=R-torch.log(1+torch.exp(a))*B
+            C=torch.cat((temp[0],C))
+            return B.data.squeeze().numpy(),C.view(-1,mask.size(1),mask.size(2),mask.size(3)).numpy()
+
+        condition,mask=split(mask,img.size(0))
+
+        if logdir is not None:
+            if not os.path.exists(os.path.join(logdir,method+suffix)):  # 如果路径不存在
+                os.makedirs(os.path.join(logdir,method+suffix))
+            if img.requires_grad:
+                img=img.detach()
+            img=img.cpu().numpy()
+            save_images(condition, os.path.join(logdir, method + suffix, 'condition.png'))
+            if attack:
+                if self.min is not None:
+                    save_images(img, os.path.join(logdir, method+suffix, 'raw_attack.png'), self.min.numpy(), self.max.numpy())
+                if improve:
+                    save_images(mask, os.path.join(logdir, method + suffix, 'mask_attack_improve.png'))
+                else:
+                    save_images(mask, os.path.join(logdir, method+suffix, 'mask_attack.png'))
+                if random:
+                    save_images(mask_random, os.path.join(logdir, method+suffix, 'mask_random_attack.png'))
+            else:
+                if self.min is not None:
+                    save_images(img, os.path.join(logdir, method+suffix, 'raw.png'), self.min.numpy(), self.max.numpy())
+                if improve:
+                    save_images(mask, os.path.join(logdir, method+suffix, 'mask_improve.png'))
+
+                else:
+                    save_images(mask, os.path.join(logdir, method+suffix, 'mask.png'))
+
+                if random:
+                    save_images(mask_random, os.path.join(logdir, method+suffix, 'mask_random.png'))
+            #cam=mask*0.5+img*0.5
+            #save_images(cam, os.path.join(logdir, method, 'cam.jpg'))
+            #if img.shape[0]==1:
+            #    from utils.visualization import show_cam
+            #    show_cam(img,mask, os.path.join(logdir, method, 'cam.jpg'))
 
 
 
